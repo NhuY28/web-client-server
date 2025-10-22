@@ -18,7 +18,8 @@ public class httpServer implements Runnable {
     }
 
     public static void main(String[] args) {
-        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+        try (ServerSocket serverSocket = new ServerSocket(PORT, 0, InetAddress.getByName("0.0.0.0"))) {
+
             System.out.println("✅ Server started.\nListening on port: " + PORT + " ...\n");
 
             while (true) {
