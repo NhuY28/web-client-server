@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Quản lý sinh viên</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 8px rgba(0,0,0,0.1);
+        }
+
+        form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        input {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            grid-column: span 2;
+            padding: 10px;
+            background: linear-gradient(90deg, #007bff, #00aaff);
+            border: none;
+            color: white;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background: #007bff;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Quản lý sinh viên</h1>
+
+    <form id="studentForm" action="/add" method="POST">
+        <label for="id">Mã SV:</label>
+        <input type="text" id="id" name="id" required>
+
+        <label for="name">Họ tên:</label>
+        <input type="text" id="name" name="name" required>
+
+        <label for="major">Ngành:</label>
+        <input type="text" id="major" name="major" required>
+
+        <label for="gpa">Điểm trung bình:</label>
+        <input type="number" step="0.01" id="gpa" name="gpa" required>
+
+        <button type="submit">Thêm sinh viên</button>
+    </form>
+
+
+    <table id="studentTable">
+        <thead>
+        <tr>
+            <th>Mã SV</th>
+            <th>Họ tên</th>
+            <th>Ngành</th>
+            <th>Điểm TB</th>
+            <th>Xóa</th>
+        </tr>
+        </thead>
+        <tbody>
+        <!-- Dữ liệu sinh viên sẽ hiển thị ở đây -->
+
+        </tbody>
+    </table>
+</div>
+
+
+</body>
+</html>
