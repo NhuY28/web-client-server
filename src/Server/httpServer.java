@@ -11,32 +11,103 @@ public class httpServer implements Runnable {
     static final int PORT = 8080;
     static final boolean verbose = true;
 
-    private static Socket connect;
+    // mỗi instance sẽ có 1 socket kết nối client
+    private Socket connect;
 
-    public httpServer(Socket c) {
+    // server-wide
+    private static ServerSocket serverSocket;
+    private static volatile boolean isRunning = false;
+    private static Thread acceptThread;
 
-        this.connect = c;
+    // Không giữ reference GUI ở đây dưới dạng static khi tải lớp
+    private static void log(String msg) {
+        // in console luôn
+        System.out.println(msg);
+        // nếu GUI đã khởi (singleton) thì show lên GUI
+        try {
+            ServerGUI.getInstance().log(msg);
+        } catch (Exception ignored) {
+            // nếu GUI chưa tạo được thì bỏ qua
+        }
     }
 
-    public static void main(String[] args) {
-        try (ServerSocket serverSocket = new ServerSocket(PORT, 0, InetAddress.getByName("0.0.0.0"))) {
+    public httpServer(Socket clientSocket) {
+        this.connect = clientSocket;
+    }
 
-            System.out.println("✅ Server started.\nListening on port: " + PORT + " ...\n");
+    // start server được GUI gọi
+    public static synchronized void startServer() {
+        if (isRunning) {
+            log("⚠️ Server is already running.");
+            return;
+        }
 
-            while (true) {
-                httpServer server = new httpServer(serverSocket.accept());
-                if (verbose) {
-                    String clientIP = connect.getInetAddress().getHostAddress();
-                    System.out.println("Connection opened (" + new Date() + ") from IP: " + clientIP);
+        try {
+            serverSocket = new ServerSocket(PORT, 0, InetAddress.getByName("0.0.0.0"));
+        } catch (IOException e) {
+            log("❌ Không thể mở ServerSocket: " + e.getMessage());
+            return;
+        }
 
+        isRunning = true;
+        log("🚀 Server started. Listening on port: " + PORT);
+
+        acceptThread = new Thread(() -> {
+            while (isRunning) {
+                try {
+                    Socket client = serverSocket.accept();
+                    if (client != null) {
+                        String clientIP = client.getInetAddress().getHostAddress();
+                        log("🔗 Client connected: IP: " + clientIP + " (" + new Date() + ")");
+                        httpServer worker = new httpServer(client);
+                        Thread t = new Thread(worker);
+                        t.start();
+                    }
+                } catch (SocketException se) {
+                    // xảy ra khi serverSocket.close() gọi từ stopServer()
+                    log("🛑 ServerSocket closed, accept loop ending.");
+                    break;
+                } catch (IOException ioe) {
+                    if (isRunning) {
+                        log("❌ IOException in accept loop: " + ioe.getMessage());
+                    }
+                    break;
                 }
+            }
+            isRunning = false;
+            log("🧱 Server accept thread finished.");
+        }, "HTTP-Accept-Thread");
 
-                Thread thread = new Thread(server);
-                thread.start();
+        acceptThread.start();
+    }
+
+    // stop server được GUI gọi
+    public static synchronized void stopServer() {
+        if (!isRunning) {
+            log("⚠️ Server is not running.");
+            return;
+        }
+
+        isRunning = false;
+        try {
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close(); // sẽ gây SocketException trong accept() và thoát vòng lặp
             }
         } catch (IOException e) {
-            System.err.println("❌ Server connection error: " + e.getMessage());
+            log("⚠️ Error closing server socket: " + e.getMessage());
         }
+
+        // optional: interrupt acceptThread
+        if (acceptThread != null) {
+            acceptThread.interrupt();
+        }
+
+        log("🛑 Stop requested for server.");
+    }
+
+    // để chạy độc lập từ command-line nếu cần
+    public static void main(String[] args) {
+        startServer();
     }
 
     @Override
@@ -44,7 +115,6 @@ public class httpServer implements Runnable {
         BufferedReader in = null;
         PrintWriter out = null;
         BufferedOutputStream dataOut = null;
-        String fileRequested = null;
 
         try {
             in = new BufferedReader(new InputStreamReader(connect.getInputStream()));
@@ -56,13 +126,12 @@ public class httpServer implements Runnable {
 
             StringTokenizer parse = new StringTokenizer(input);
             String method = parse.nextToken().toUpperCase();
-            fileRequested = parse.nextToken().toLowerCase();
+            String fileRequested = parse.nextToken().toLowerCase();
 
-            // --- Xử lý GET index.html ---
+            // --- Xử lý GET /index.html ---
             if (method.equals("GET") && (fileRequested.equals("/") || fileRequested.equals("/index.html"))) {
                 File file = new File(WEB_ROOT, DEFAULT_FILE);
                 if (file.exists()) {
-                    // Đọc file HTML
                     StringBuilder html = new StringBuilder();
                     try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
                         String line;
@@ -71,7 +140,6 @@ public class httpServer implements Runnable {
                         }
                     }
 
-                    // Lấy dữ liệu sinh viên từ CSDL
                     List<Map<String, String>> students = DatabaseConnect.getAllStudents();
                     StringBuilder tableRows = new StringBuilder();
                     for (Map<String, String> s : students) {
@@ -89,8 +157,6 @@ public class httpServer implements Runnable {
                                 .append("</tr>\n");
                     }
 
-
-                    // Chèn dữ liệu vào tbody
                     String htmlContent = html.toString().replace("<!-- Dữ liệu sinh viên sẽ hiển thị ở đây -->", tableRows.toString());
                     byte[] data = htmlContent.getBytes("UTF-8");
 
@@ -123,7 +189,7 @@ public class httpServer implements Runnable {
                 String formData = new String(body);
                 Map<String, String> params = parseFormData(formData);
 
-                System.out.println("📥 Dữ liệu form: " + formData);
+                log("📥 Dữ liệu form: " + formData);
 
                 DatabaseConnect.insertStudent(
                         params.get("id"),
@@ -131,6 +197,13 @@ public class httpServer implements Runnable {
                         params.get("major"),
                         Double.parseDouble(params.get("gpa"))
                 );
+
+                // ghi log ra GUI (nếu có)
+                try {
+                    ServerGUI.getInstance().logWithIcon("src/Server/add.png", "✅ Đã thêm sinh viên vào CSDL: " + params.get("name"));
+                } catch (Exception e) {
+                    log("✅ Đã thêm sinh viên vào CSDL: " + params.get("name"));
+                }
 
                 String response = """
                         <html><body>
@@ -166,16 +239,22 @@ public class httpServer implements Runnable {
                 Map<String, String> params = parseFormData(formData);
                 String id = params.get("id");
 
-                System.out.println("🗑️ Yêu cầu xóa sinh viên ID: " + id);
+                log("🗑️ Yêu cầu xóa sinh viên ID: " + id);
 
                 DatabaseConnect.deleteStudent(id);
 
+                try {
+                    ServerGUI.getInstance().logWithIcon("src/Server/delete.png", "✅ Đã xóa sinh viên ID: " + id);
+                } catch (Exception e) {
+                    log("Đã xóa sinh viên ID: " + id);
+                }
+
                 String response = """
-            <html><body>
-            <h1>🗑️ Đã xóa sinh viên thành công!</h1>
-            <a href='/'>Quay lại trang chủ</a>
-            </body></html>
-            """;
+                        <html><body>
+                        <h1>🗑️ Đã xóa sinh viên thành công!</h1>
+                        <a href='/'>Quay lại trang chủ</a>
+                        </body></html>
+                        """;
 
                 out.println("HTTP/1.1 200 OK");
                 out.println("Content-Type: text/html; charset=UTF-8");
@@ -188,21 +267,20 @@ public class httpServer implements Runnable {
                 return;
             }
 
-
         } catch (IOException ioe) {
-            System.err.println("❌ Server error: " + ioe);
+            log("❌ Server error: " + ioe);
         } finally {
             try {
                 if (in != null) in.close();
                 if (out != null) out.close();
                 if (dataOut != null) dataOut.close();
-                connect.close();
+                if (connect != null && !connect.isClosed()) connect.close();
             } catch (Exception e) {
-                System.err.println("Error closing stream: " + e.getMessage());
+                log("⚠️ Error closing stream: " + e.getMessage());
             }
 
             if (verbose) {
-                System.out.println("🔒 Connection closed.\n");
+                log("🔒 Connection closed.\n");
             }
         }
     }
@@ -226,7 +304,7 @@ public class httpServer implements Runnable {
         dataOut.write(fileData, 0, fileLength);
         dataOut.flush();
 
-        if (verbose) System.out.println("❌ File " + fileRequested + " not found.");
+        log("❌ File " + fileRequested + " not found.");
     }
 
     private static Map<String, String> parseFormData(String formData) throws UnsupportedEncodingException {
