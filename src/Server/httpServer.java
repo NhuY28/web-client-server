@@ -11,9 +11,10 @@ public class httpServer implements Runnable {
     static final int PORT = 8080;
     static final boolean verbose = true;
 
-    private Socket connect;
+    private static Socket connect;
 
     public httpServer(Socket c) {
+
         this.connect = c;
     }
 
@@ -25,7 +26,9 @@ public class httpServer implements Runnable {
             while (true) {
                 httpServer server = new httpServer(serverSocket.accept());
                 if (verbose) {
-                    System.out.println("Connection opened (" + new Date() + ")");
+                    String clientIP = connect.getInetAddress().getHostAddress();
+                    System.out.println("Connection opened (" + new Date() + ") from IP: " + clientIP);
+
                 }
 
                 Thread thread = new Thread(server);
